@@ -1,0 +1,180 @@
+#! /bin/bash
+
+# Developed by J.M. Vicent-Luna
+# LAST UPDATED 20-03-18
+
+PreferredUnits=mol/kg
+InsType=CB
+PreferredTerminal=qt
+
+if [ $# -gt "0" ]
+then
+ if [ $1 = "-h" ]
+ then
+ echo " " ; echo " ======================================================" ; echo " "
+ echo " This script shows the instantaneous loading from the output file corresponding to an adsorption simulation perfomed with RASPA software
+
+ SYNOPSIS
+        zzcheck-equilibration.scp output-file-name [OPTION1] [OPTION2] [OPTION3] ... [OPTIONn]
+    
+                   options are not mandatory. Order is arbitrary, except for help option (-h)
+
+ OPTIONS
+       -'units',   Select units: mol/kg, molec/uc, mg/g, cm3/g, or cm3/cm3.
+                   (default mol/kg. One can change the default units in the PreferredUnits variable of the first lines of the script)   
+
+       -'instype', Select the insertion move used: CF or CB for continuous fractional component or configurational bias, respectively.
+                   (default CB. One can change the default insertion type in the InsType variable of the first lines of the script)   
+
+       -'termn',   Select the terminal: qt or x11 for plotting in Gnuplot. Recommended terminal for remote connections, x11.
+                   (default qt. One can change the default terminal type in the PreferredTerminal variable of the first lines of the script)   
+
+       -range,     Modify the xrange of the plot. When option -range is used, the script will read xmin and xmax values for plotting.
+                   (default 0:MaxValue.)   
+
+       -plot,      Choose this option to avoid the plotting of the results
+                   (default yes)
+
+       -save,      Choose this option to save the requested data automatically.
+                   (default no)
+
+       -h,         Print help and quit. Only valid in [OPTION1]
+
+ AUTHOR
+       Script developed by Jose Manuel Vicent-Luna
+ "
+ echo " " ; echo " ======================================================" ; echo " "
+ exit 1
+ fi
+fi
+
+units=$PreferredUnits
+if [ $InsType = "CB" ]
+then 
+	insnumber=5
+fi
+plotvar="true"
+savevar="false"
+termw=$PreferredTerminal
+
+for arg in "$@"
+do
+	case $arg in
+	$1) title=$(echo $1 | sed 's/\//\ /g' | awk '{print $NF}' | sed 's/\_/\ /g' | sed 's/output//g' | sed 's/.data//g')
+	;;	
+	-mol/kg) units=mol/kg
+	;;
+	-molec/uc) units=molec/uc
+	;;
+	-mg/g) units=mg/g
+	;;
+	-cm3/g) units=cm3/g
+	;;
+	-cm3/cm3) units=cm3/cm3
+	;;
+	-CF) insnumber=7
+	;;
+	-CB) insnumber=5
+	;;
+	-x11) termw=x11
+	;;
+	-qt) termw=qt
+	;;
+	-range) rangex="true"
+	;;
+	-plot) plotvar="false"
+	;;
+	-save) savevar="true"
+	;;
+	*)
+	echo " "; echo "ERROR! wrong argument given. For help, write: zzcheck-equilibration.scp -h"; echo " " ; exit 1
+esac
+done
+
+
+if [ $units = "mol/kg" ]
+then
+	unit=2 ; caseunit=1
+elif [ $units = "molec/uc" ]
+then
+	unit=4 ; caseunit=1
+elif [ $units = "mg/g" ]
+then
+	unit=6 ; caseunit=1
+elif [ $units = "cm3/g" ]
+then
+	unit=2 ; caseunit=2
+elif [ $units = "cm3/cm3" ]
+then
+	unit=4 ; caseunit=2
+else
+	echo " "
+fi
+
+let unit2=unit+1
+
+if [ $rangex = "true" ]
+then
+	echo " " ; read -p "Introduce xrange[Xmin Xmax]        " xmin1 xmax1 ; echo ""
+	xrange=$xmin1:$xmax1
+else
+xrange=:
+fi
+
+
+echo "set terminal $termw
+ set title '$title'
+ set xrange[$xrange]
+ set grid
+ set lmargin 15
+ set ylabel'Loading [$units]' tc rgb 'red'
+ set key tmargin
+ set border lw 2.5
+ set y2label'Loading [$units]' tc rgb 'blue' 
+ set y2tics; set ytics nomirror" > load_temp.gnup 
+echo "plot 0 notitle" >> load_temp.gnup 
+
+num=0
+lc1=red ; lc2=blue
+while [ $num -le 10 ];do
+	grep "Component $num \[" $1 | grep "Adsorbate molecule" | awk '{print $3}' | sed 's/\[//g' | sed 's/\]//g'| awk '{print $1}' > tmp$num
+	variable=$(cat tmp$num) 
+	if [ -n "$variable" ] 
+	then
+		if [ $caseunit = 1 ]
+		then
+		grep -A $insnumber "($variable" $1 | grep "absolute adsorption" | grep "avg" | awk '{print NR,$7,$9,$3,$5,$11,$13}' >> $variable.dat_load
+		elif [ $caseunit = 2 ]
+		then
+		grep -A $insnumber "($variable" $1 | grep -A 1 "absolute adsorption" | grep "avg" | grep  "STP/g" | awk '{print NR,$1,$3,$6,$8}' >> $variable.dat_load
+		fi
+	echo "replot '$variable.dat_load' u 1:$unit w p pt 4 ps 0.5 lw 1.5 lc rgb '$lc1' notitle, '' u 1:$unit2 w lp pt 5 lc rgb '$lc1' t '$variable full-scale', '' u 1:$unit2 axis x1y2 w lp pt 7 lc rgb '$lc2' t '$variable zoom-scale'" >> load_temp.gnup
+	fi
+	let num=$num+1
+	lc1=forest-green ; lc2=purple
+done
+
+echo "pause mouse, keypress, any" >> load_temp.gnup 
+
+num=0
+
+while [ $num -le 10 ];do
+	rm tmp$num
+	let num=$num+1
+done
+
+if [ $plotvar = "true" ]
+then
+gnuplot load_temp.gnup 
+fi
+
+ rm load_temp.gnup
+
+if [ $savevar = "true" ]
+then
+	echo " ";   echo "Saved data"; echo " "
+else
+ rm *.dat_load 
+fi
+
+

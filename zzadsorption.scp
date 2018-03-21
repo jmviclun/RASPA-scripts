@@ -1,0 +1,448 @@
+#! /bin/bash
+
+# Developed by J.M. Vicent-Luna
+# LAST UPDATED 21-03-18
+
+#uncomment the correct line below for the SimulationTypeDefault (only one "isotherm" or "isobar")
+SimulationTypeDefault="isotherm"
+#SimulationTypeDefault="isobar"
+PreferredUnits=mol/kg
+PreferredTerminal=qt
+
+if [ $# -gt "0" ]
+then
+ if [ $1 = "-h" ]
+ then
+ echo " " ; echo " ======================================================" ; echo " "
+ echo " This script take the results of adsorption simulations performed with RASPA simulation software
+
+ SYNOPSIS
+        zzadsorption.scp [OPTION1] [OPTION2] [OPTION3] ... [OPTIONn]
+    
+                   options are not mandatory. Order is arbitrary, except for help option (-h)
+
+ OPTIONS
+       -p,         Save a file with the loading of adsorption isotherm (sim-component-structure-temperature.dat)
+                   (one can change the default value in the SimulationTypeDefault of the first lines of the script)   
+
+       -T,         Save a file with the loading of adsorption isobar (sim-component-structure-pressure.dat)
+                   (one can change the default value in the SimulationTypeDefault of the first lines of the script)   
+
+       -excess,    Save a file with loading including excess loading (sim-component-structure-temp/press-excess.dat)
+                   (default no)
+
+       -avg,       Save a file with loading averaged manually from the current number of molecules in simulation output (sim-component-structure-temp/press-avg.dat)
+                   (default no)
+
+       -nf,        Save a file with loading includindg non-finished simulations (nf-sim-component-structure-temp/press.dat)
+                   (default no)
+
+       -heat,      Save a file with loading including heats of adsorption and its error (sim-component-structure-temp/press-heat.dat)
+                   (default no)
+
+       -'units',   Select units: mol/kg, molec/uc, mg/g, cm3/g, or cm3/cm3.
+		   (default mol/kg. One can change the default units in the PreferredUnits variable of the first lines of the script)   
+
+       -'termn',   Select the terminal: qt or x11 for plotting in Gnuplot. Recommended terminal for remote connections, x11.
+		   (default qt. One can change the default terminal type in the PreferredTerminal variable of the first lines of the script)   
+
+       -linear,    Choose this option to plot the results in linear scale instead of log-scale.
+                   (default no)
+
+       -plot,      Choose this option to avoid the plotting of the results
+                   (default yes)
+
+       -save,      Choose this option to save the requested data automatically. By default, the script request you if you want to save them
+                   (default yes)
+
+       -h,         Print help and quit. Only valid in [OPTION1]
+
+ AUTHOR
+       Script developed by Jose Manuel Vicent-Luna
+ "
+ echo " " ; echo " ======================================================" ; echo " "
+ exit 1
+ fi
+fi
+
+presvar="false"
+tempvar="false"
+excessvar="false"
+avgvar="false"
+nfvar="false"
+heatvar="false"
+linearvar="false"
+plotvar="true"
+savevar="true"
+units=$PreferredUnits
+termw=$PreferredTerminal
+
+for arg in "$@"
+do
+case $arg in
+-p) presvar="true"
+;;
+-T) tempvar="true"
+;;
+-excess) excessvar="true"
+;;
+-avg) avgvar="true"
+;;
+-nf) nfvar="true"
+;;
+-heat) heatvar="true"
+;;
+-mol/kg) units=mol/kg
+;;
+-molec/uc) units=molec/uc
+;;
+-mg/g) units=mg/g
+;;
+-cm3/g) units=cm3/g
+;;
+-cm3/cm3) units=cm3/cm3
+;;
+-x11) termw=x11
+;;
+-qt) termw=qt
+;;
+-linear) linearvar="true"
+;;
+-plot) plotvar="false"
+;;
+-save) savevar="false"
+;;
+*)
+echo " "; echo "ERROR! wrong argument given. For help, write: zzadsorption.scp -h"; echo " " ; exit 1 
+esac
+done
+
+if [ $units = "mol/kg" ]
+then
+      unit=2 
+elif [ $units = "molec/uc" ]
+then
+      unit=3 
+elif [ $units = "mg/g" ]
+then
+      unit=5 
+elif [ $units = "cm3/g" ]
+then
+      unit=4 
+elif [ $units = "cm3/cm3" ]
+then
+      unit=6 
+else
+      echo " "
+fi
+
+
+structure=$(grep "Framework name" */Output/System_0/output*.data | tail -1 | awk '{print $3}')
+pressure=$(grep -H "Framework name" */Output/System_0/output*.data | tail -1 | awk '{print $1}' | sed 's/\_/\ /g' | sed 's/.data:Framework//g' | awk '{print $NF}')
+temperature=$(grep -H "Framework name" */Output/System_0/output*.data | tail -1 | awk '{print $1}' | sed 's/\_/\ /g' | sed 's/.data:Framework//g' | awk '{print $(NF-1)}' | sed 's/\./\ /g' | awk '{print $1}')
+
+echo "#[1][KPa]" > pressure-col.dat_load
+echo "#[1][KPa]" > nf-pressure-col.dat_load
+echo "#[1][K]" > temperature-col.dat_load
+echo "#[1][K]" > nf-temperature-col.dat_load
+
+echo "set term $termw
+set grid
+set ylabel'Loading [$units]'
+set xlabel 'P [KPa]'
+set title 'ADSORPTION'
+set key tmargin" > load2_temp.gnup #temporal script for gnuplot plotting
+echo "plot 0 notitle" >> load2_temp.gnup 
+
+if [ $presvar = "true" ]
+then
+SimulationTypeDefault="isotherm"
+elif [ $tempvar = "true" ]
+then
+SimulationTypeDefault="isobar"
+else
+echo " "
+fi
+
+std=$SimulationTypeDefault
+
+if [ $presvar = "true" ]
+then
+std="isotherm"
+fi
+if [ $tempvar = "true" ]
+then
+std="isobar"
+fi
+
+if [ $std = "isotherm" ]
+then
+nameproperty=$(echo ${temperature}"K")
+	if [ $linearvar = "true" ]
+	then a="a"
+	else
+	echo "set logscale x" >> load2_temp.gnup
+	fi
+elif [ $std = "isobar" ]
+then 
+nameproperty=$(echo ${pressure}"Pa")
+echo "set xlabel 'T [K]'" >> load2_temp.gnup
+else
+echo " "; echo "    ERROR ! 
+Bad SimulationTypeDefault value. Change it in first lines of script"; echo " "
+exit 1
+fi
+
+num=0
+
+#Find the component name and make headers for temporal files
+while [ $num -le 10 ];do  # loop for headers [1]
+        componentname=$(grep "Component $num \[" */Output/System_0/output*.data | grep "Adsorbate molecule" | awk '{print $3}' | sed 's/\[//g' | sed 's/\]//g'| awk '{print $1}' | head -1) #assign the component name to a variable
+
+	if [ -n "$componentname" ] #condition to check if the component name variable is empty
+	then
+		echo "[2]mol/Kg" > $componentname.dat_load
+		echo "[3]molec/uc" > $componentname.dat_molecuc
+		echo "[3]molec/uc" > nf$componentname.dat_molecuc
+		echo "[3]molec/uc" > $componentname.dat_molecucaver
+		echo "[4]cm3/g" > $componentname.dat_cm3
+		echo "[5]mg/g " > $componentname.dat_mg
+		echo "[6]cm3/cm3" > $componentname.dat_cm3cm3
+		echo "[8]excess_mol_Kg" > $componentname.dat_excess
+                echo "[9]excess_molec/uc" > $componentname.dat_excess_molec
+                echo "[10]excess_cm3/g" > $componentname.dat_excess_cm3
+                echo "[11]excess_mg/g" > $componentname.dat_excess_mg
+                echo "[12]excess_cm3/cm3" > $componentname.dat_excess_cm3cm3
+                echo "#[7]deltaH-(Ug-subtraction-needed)" > $componentname.dat_heat
+                echo "#[8]error-deltaH" > $componentname.dat_heaterror
+	fi
+	let num=$num+1
+done  # loop for headers [1]
+ 
+num=0
+
+# look for data in output files
+while [ $num -le 10 ];do #main loop [2]
+
+
+	componentname=$(grep "Component $num \[" */Output/System_0/output*.data | grep "Adsorbate molecule" | awk '{print $3}' | sed 's/\[//g' | sed 's/\]//g'| awk '{print $1}' | head -1) #assign the component name to a variable
+
+
+	if [ -n "$componentname" ] #condition to check if the component name variable is empty
+	then
+                grep -l "Simulation started" */Output/System_0/output*.data > sim-started$num.data #look for finished simulations
+		grep -l "Simulation finished" */Output/System_0/output*.data > sim-finished$num.data #look for finished simulations
+
+
+               diff sim-finished$num.data sim-started$num.data | grep "Output" | awk '{print $2}' > sim-not-finished$num.data #identify not finished simulations
+
+
+		while read line  #loop [3] to read sim-finished*.data line by line taking data from outputs
+		do
+			grep -h -A 14 "Component $num \[$componentname" $line | grep "mol/kg" | awk '{print $6}'>> $componentname.dat_load
+			grep -h -A 14 "Component $num \[$componentname" $line | grep "molecules/unit cell" | awk '{print $6}'>> $componentname.dat_molecuc
+			ucell=$(grep -H "Component $num \[$componentname" $line | grep "Adsorbate molecule" | awk '{print $1}' | sed 's/\_/\ /g' | sed 's/.data:Component//g'| awk '{print $(NF-2)}' | sed 's/\./\ /g' | awk '{print $1*$2*$3}')
+			avers=$(grep -h "Component $num ($componentname" $line | grep "current number of integer" | grep "(avg." | wc -l | awk '{print $1}') 
+			grep -h "Component $num ($componentname" $line | grep "current number of integer" | grep "(avg." | sed 's/\//\ /g'| awk '{print $11}' | awk -v avers=$avers ucell=$ucell'{ SUM += $1} END { printf"%10.4f\n", SUM/avers/ucell }' >> $componentname.dat_molecucaver
+			grep -h -A 14 "Component $num \[$componentname" $line | grep "(STP)/gr" | awk '{print $7}'>> $componentname.dat_cm3
+			grep -h -A 14 "Component $num \[$componentname" $line | grep "milligram" | awk '{print $6}'>> $componentname.dat_mg
+			grep -h -A 14 "Component $num \[$componentname" $line | grep "(STP)/cm" | awk '{print $7}'>> $componentname.dat_cm3cm3
+			grep -h -A 27 "Component $num \[$componentname" $line | grep "excess" | grep "mol/kg" | awk '{print $6}'>> $componentname.dat_excess
+                        grep -h -A 27 "Component $num \[$componentname" $line | grep "excess" | grep "molecules/unit cell" | awk '{print $6}'>> $componentname.dat_excess_molec
+                        grep -h -A 27 "Component $num \[$componentname" $line | grep "excess" | grep "(STP)/gr" | awk '{print $7}'>> $componentname.dat_excess_cm3
+                        grep -h -A 27 "Component $num \[$componentname" $line | grep "excess" | grep "milligram" | awk '{print $6}'>> $componentname.dat_excess_mg
+                        grep -h -A 27 "Component $num \[$componentname" $line | grep "excess" | grep "(STP)/cm" | awk '{print $7}'>> $componentname.dat_excess_cm3cm3
+                        grep -B 1 "Note: Ug should be subtracted from this value" $line | grep "KJ" | awk '{print $1}'  >> $componentname.dat_heat
+                        grep -B 1 "Note: Ug should be subtracted from this value" $line | grep "KJ" | awk '{print $3}'  >> $componentname.dat_heaterror
+			grep -H "Component $num \[$componentname" $line | grep "Adsorbate molecule" | awk '{print $1}' | sed 's/\_/\ /g' | sed 's/.data:Component//g' | awk '{print $NF/1000}' >> pressure-col.dat_load
+                        grep -H "Component $num \[$componentname" $line | grep "Adsorbate molecule" | awk '{print $1}' | sed 's/\_/\ /g' | sed 's/.data:Component//g' | awk '{print $(NF-1)}' >> temperature-col.dat_load
+		done < sim-finished$num.data  #loop [3] to read sim-finished*.data line by line taking data from outputs
+
+
+		while read line  #loop [4] to read sim-not-finished*.data line by line taking data from outputs
+		do
+			ucell=$(grep -H "Component $num \[$componentname" $line | grep "Adsorbate molecule" | awk '{print $1}' | sed 's/\_/\ /g' | sed 's/.data:Component//g'| awk '{print $(NF-2)}' | sed 's/\./\ /g' | awk '{print $1*$2*$3}')
+			avers=$(grep -h "Component $num ($componentname" $line | grep "current number of integer" | grep "(avg." | wc -l | awk '{print $1}') 
+
+			grep -h "Component $num ($componentname" $line | grep "current number of integer" | grep "(avg." | sed 's/\//\ /g'| awk '{print $11}' | awk -v avers=$avers ucell=$ucell'{ SUM += $1} END { printf"%10.4f\n", SUM/avers/ucell }' >> nf$componentname.dat_molecuc
+
+
+			grep -H "Component $num \[$componentname" $line | grep "Adsorbate molecule" | awk '{print $1}' | sed 's/\_/\ /g' | sed 's/.data:Component//g' | awk '{print $NF/1000}' >> nf-pressure-col.dat_load
+                        grep -H "Component $num \[$componentname" $line | grep "Adsorbate molecule" | awk '{print $1}' | sed 's/\_/\ /g' | sed 's/.data:Component//g' | awk '{print $(NF-1)}' >> nf-temperature-col.dat_load
+		done < sim-not-finished$num.data  #loop [4] to read sim-not-finished*.data line by line taking data from outputs
+
+if [ $std = "isotherm" ]
+then
+cp pressure-col.dat_load first-col.dat_load
+cp nf-pressure-col.dat_load nf-first-col.dat_load
+else
+cp temperature-col.dat_load first-col.dat_load
+cp nf-temperature-col.dat_load nf-first-col.dat_load
+fi
+
+
+#paste and organize files
+
+####################################################################################################
+############################         LOADING AND EXCESS          ###################################
+####################################################################################################
+		paste first-col.dat_load $componentname.dat_load $componentname.dat_molecuc $componentname.dat_cm3 $componentname.dat_mg $componentname.dat_cm3cm3 > $componentname.data_disordered 
+		
+                
+                paste first-col.dat_load $componentname.dat_excess $componentname.dat_excess_molec $componentname.dat_excess_cm3 $componentname.dat_excess_mg $componentname.dat_excess_cm3cm3 > $componentname.data_disordered-excess 
+
+		sort -g $componentname.data_disordered > $componentname.2_load  #sort the data
+		sort -g $componentname.data_disordered-excess > $componentname.2_load-excess  #sort the data
+		awk 'NF > 1 { print $0}' $componentname.2_load > $componentname.datnoformat  #remove lines without adsorption
+		awk 'NF > 1 { print $0}' $componentname.2_load-excess > $componentname.datnoformat-excess  #remove lines without adsorption
+		echo "# Averages given in the Output file" > sim-$componentname-$structure-$nameproperty.load
+		echo "# Averages given in the Output file" > sim-$componentname-$structure-$nameproperty-excess.load
+
+                if [ $std = "isotherm" ]
+                then
+		cat $componentname.datnoformat | awk '{if ($1=="#[1][KPa]"){print $0} else {printf"%1.1e%10.4f%10.4f%10.4f%10.4f%10.4f\n", $1,$2,$3,$4,$5,$6}}' > sim-$componentname-$structure-$nameproperty.load
+		cat $componentname.datnoformat-excess | awk '{if ($1=="#[1][KPa]"){print $0} else {printf"%1.1e%10.4f%10.4f%10.4f%10.4f%10.4f\n", $1,$2,$3,$4,$5,$6}}' > sim-$componentname-$structure-$nameproperty-excess.5load
+                paste sim-$componentname-$structure-$nameproperty.load sim-$componentname-$structure-$nameproperty-excess.5load > sim-$componentname-$structure-$nameproperty-excess.load                
+                else
+		cat $componentname.datnoformat | awk '{if ($1=="#[1][K]"){print $0} else {printf"%8.3f%10.4f%10.4f%10.4f%10.4f%10.4f\n", $1,$2,$3,$4,$5,$6}}' > sim-$componentname-$structure-$nameproperty.load
+		cat $componentname.datnoformat-excess | awk '{if ($1=="#[1][K]"){print $0} else {printf"%8.3f%10.4f%10.4f%10.4f%10.4f%10.4f\n", $1,$2,$3,$4,$5,$6}}' > sim-$componentname-$structure-$nameproperty-excess.5load
+                paste sim-$componentname-$structure-$nameproperty.load sim-$componentname-$structure-$nameproperty-excess.5load > sim-$componentname-$structure-$nameproperty-excess.load                
+                fi
+
+
+
+####################################################################################################
+############################          AVERAGED LOADING           ###################################
+####################################################################################################
+
+c1=$(cat $componentname.datnoformat | grep -v "#" | tail -1 | awk '{print $3/$2}')
+c2=$(cat $componentname.datnoformat | grep -v "#" | tail -1 | awk '{print $3/$4}')
+c3=$(cat $componentname.datnoformat | grep -v "#" | tail -1 | awk '{print $3/$5}')
+c4=$(cat $componentname.datnoformat | grep -v "#" | tail -1 | awk '{print $3/$6}')
+
+		paste first-col.dat_load $componentname.dat_load $componentname.dat_molecucaver $componentname.dat_cm3 $componentname.dat_mg $componentname.dat_cm3cm3 > $componentname.data4_disordered 
+		sort -g $componentname.data4_disordered > $componentname.4_load  #sort the data
+		awk 'NF > 1 { print $0}' $componentname.4_load > $componentname.dat4noformat  #remove lines without adsorption
+		echo "# Averages calculated from molecules per simulation box of the Output file (no excess)" > sim-$componentname-$structure-$nameproperty-avg.load
+
+                if [ $std = "isotherm" ]
+                then
+		cat $componentname.dat4noformat | awk -v c1=$c1 -v c2=$c2 -v c3=$c3 -v c4=$c4 '{if ($1=="#[1][KPa]"){print $0} else {printf"%1.1e%10.4f%10.4f%10.4f%10.4f%10.4f\n", $1,$3/c1,$3,$3/c2,$3/c3,$3/c4}}' > sim-$componentname-$structure-$nameproperty-avg.load
+                else
+		cat $componentname.dat4noformat | awk -v c1=$c1 -v c2=$c2 -v c3=$c3 -v c4=$c4 '{if ($1=="#[1][K]"){print $0} else {printf"%8.3f%10.4f%10.4f%10.4f%10.4f%10.4f\n", $1,$3/c1,$3,$3/c2,$3/c3,$3/c4}}' > sim-$componentname-$structure-$nameproperty-avg.load
+                fi
+
+
+####################################################################################################
+############################      LOADING NON-FINISHED SIMULATIONS    ##############################
+####################################################################################################
+
+                paste nf-first-col.dat_load  nf$componentname.dat_molecuc nf$componentname.dat_molecuc nf$componentname.dat_molecuc nf$componentname.dat_molecuc nf$componentname.dat_molecuc > nf$componentname.data_disordered
+
+                sort -g nf$componentname.data_disordered > nf$componentname.2_load  #sort the data
+                awk 'NF > 1 { print $0}' nf$componentname.2_load > nf$componentname.datnoformat  #remove lines without adsorption
+
+                if [ $std = "isotherm" ]
+                then
+                cat nf$componentname.datnoformat | awk -v c1=$c1 -v c2=$c2 -v c3=$c3 -v c4=$c4 '{if ($1=="#[1][KPa]"){print $0} else {printf"%1.1e%10.4f%10.4f%10.4f%10.4f%10.4f\n", $1,$3/c1,$3,$3/c2,$3/c3,$3/c4}}' > nf-sim-$componentname-$structure-$nameproperty.5load
+                cat sim-$componentname-$structure-$nameproperty.load > nf-sim-$componentname-$structure-$nameproperty.load
+                cat nf-sim-$componentname-$structure-$nameproperty.5load >> nf-sim-$componentname-$structure-$nameproperty.load
+                else
+                cat nf$componentname.datnoformat | awk -v c1=$c1 -v c2=$c2 -v c3=$c3 -v c4=$c4 '{if ($1=="#[1][K]"){print $0} else {printf"%8.3f%10.4f%10.4f%10.4f%10.4f%10.4f\n", $1,$3/c1,$3,$3/c2,$3/c3,$3/c4}}' > nf-sim-$componentname-$structure-$nameproperty.5load
+                cat sim-$componentname-$structure-$nameproperty.load > nf-sim-$componentname-$structure-$nameproperty.load
+                cat nf-sim-$componentname-$structure-$nameproperty.5load >> nf-sim-$componentname-$structure-$nameproperty.load
+                fi
+
+
+####################################################################################################
+########################           HEATS FROM ADSORPTION SIMULATIONS           #####################
+####################################################################################################
+
+                paste first-col.dat_load $componentname.dat_heat $componentname.dat_heaterror > $componentname.data_disordered-heat
+
+                sort -g $componentname.data_disordered-heat > $componentname.2_load-heat  #sort the data
+                awk 'NF > 1 { print $0}' $componentname.2_load-heat > $componentname.datnoformat-heat  #remove lines without adsorption
+                echo "# Averages given in the Output file" > sim-$componentname-$structure-$nameproperty-heat.load
+
+
+                if [ $std = "isotherm" ]
+                then
+		cat $componentname.datnoformat-heat | awk '{if ($1=="#[1][KPa]"){print $0} else {printf"%14.8f%14.8f\n", $2,$3}}' > sim-$componentname-$structure-$nameproperty-heat.5load
+                paste sim-$componentname-$structure-$nameproperty.load sim-$componentname-$structure-$nameproperty-heat.5load > sim-$componentname-$structure-$nameproperty-heat.load
+                else
+		cat $componentname.datnoformat-heat | awk '{if ($1=="#[1][K]"){print $0} else {printf"%14.8f%14.8f\n", $2,$3}}' > sim-$componentname-$structure-$nameproperty-heat.5load
+                paste sim-$componentname-$structure-$nameproperty.load sim-$componentname-$structure-$nameproperty-heat.5load > sim-$componentname-$structure-$nameproperty-heat.load
+                fi
+
+
+
+
+####################################################################################################
+                lcvar=$(echo $num | awk '{print $1+1}')
+                varempty=$(grep -v "#" sim-$componentname-$structure-$nameproperty.load)
+                if [ -n "$varempty" ] 
+                then
+		echo "replot 'sim-$componentname-$structure-$nameproperty.load' u 1:$unit ps 3.0 pt 7 lc -1 notitle " >> load2_temp.gnup  
+		echo "replot 'sim-$componentname-$structure-$nameproperty.load' u 1:$unit w lp ps 2.0 pt 7 lc $lcvar " >> load2_temp.gnup  
+                fi
+
+                nfvarempty=$(grep -v "#" nf-sim-$componentname-$structure-$nameproperty.5load)
+                if [ -n "$nfvarempty" ] 
+                then
+ 		echo "replot 'nf-sim-$componentname-$structure-$nameproperty.5load' u 1:$unit ps 3.0 pt 7 lc -1 notitle " >> load2_temp.gnup  
+		echo "replot 'nf-sim-$componentname-$structure-$nameproperty.5load' u 1:$unit w lp ps 2.0 pt 6 lw 1 lc $lcvar " >> load2_temp.gnup  
+                fi
+	fi
+	let num=$num+1
+done #main loop [2]
+
+
+
+echo "pause mouse, keypress, any" >> load2_temp.gnup #maintain gnuplot window opened up to press key or mouse click
+
+
+if [ $plotvar = "true" ] 
+then
+gnuplot load2_temp.gnup #plot result using gnuplot
+fi
+
+rm load2_temp.gnup *.dat_load *.dat_molecuc *.dat_cm3* *.dat_mg *.data*_disordered* *.2_load* *.4_load  sim-*finished*.data sim-started*.data *.dat_excess* *.dat*noformat* *.dat_molecucaver *.dat_heat* *.5load #remove temporal files created
+
+if [ $savevar = "true" ]
+then
+echo " " ; read -p "Save data(y/n)?" text
+else
+text="y"
+fi
+
+echo " "
+ if [ $text = "y" ]
+  then
+  echo " "
+  echo "*.load and files created"
+  echo " "
+
+    if [ $excessvar = "false" ]
+    then
+    rm *-excess.load
+    fi
+
+    if [ $avgvar = "false" ]
+    then
+    rm *-avg.load
+    fi
+
+    if [ $nfvar = "false" ]
+    then
+    rm nf-sim*.load
+    fi
+
+    if [ $heatvar = "false" ]
+    then
+    rm *-heat.load
+    fi
+
+  else
+  rm *.load 
+  fi
+
