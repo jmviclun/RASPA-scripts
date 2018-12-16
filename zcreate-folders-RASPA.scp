@@ -156,7 +156,7 @@ while read line; do
         cp template/simulation.input $num/.
         cp template/run $num/.
         cp template/*.def $num/.
-        cp template/*.cif $num/.
+        if [ $boxvar = "false" ] ; then cp template/*.cif $num/. ; fi
         npressure=$line
         echo $num  "     " $npressure  "    "  $inittemp
 
@@ -184,7 +184,7 @@ while read line; do
         cp template/simulation.input $ntemperature/.
         cp template/run $ntemperature/.
         cp template/*.def $ntemperature/.
-        cp template/*.cif $ntemperature/.
+        if [ $boxvar = "false" ] ; then cp template/*.cif $num/. ; fi
         echo $ntemperature  "     " $initpress  "    "  $ntemperature
         echo " "
         cp $ntemperature/simulation.input $ntemperature/temporal1.tmp
