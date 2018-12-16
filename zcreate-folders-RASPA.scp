@@ -1,0 +1,208 @@
+#!/bin/bash
+
+# Developed by J.M. Vicent-Luna
+# LAST UPDATED 16-12-18
+
+if [ $# -eq "0" ]
+then
+echo " "
+echo "Arguments are mandatory. For help, write: \"zcreate-folders-RASPA.scp -h\" " 
+echo " "
+exit 1
+fi
+
+ if [ $1 = "-h" ]
+ then
+ echo " " ; echo " ======================================================" ; echo " "
+ echo " This script creates folders containing inputs for isotherm or isobar simulations for RASPA softwarwe simulation software
+
+ SYNOPSIS
+        zcreate-folders-RASPA.scp \"input file name\" or [OPTION] 
+    
+                   options are not mandatory. Order is arbitrary, except for help option (-h)
+
+ input file name,  accepted names are pressures.dat and temperatures.dat for isotherm and isobar, respectively
+
+ OPTIONS
+       -show,      Show information from simulation inputs of the folders in the current directory and quit.  
+
+       -h,         Print help and quit. Only valid in [OPTION1]
+
+ AUTHOR
+       Script developed by Jose Manuel Vicent-Luna
+ "
+ echo " " ; echo " ======================================================" ; echo " "
+ exit 1
+ fi
+
+
+echo " " ; echo "=======================================" 
+ls -d */ > folders.dat
+sed -i 's/\///g' folders.dat 
+ndir=$(cat folders.dat | sort -n | tail -1)
+echo " "
+echo "This directory contains these folders:" ; echo ""
+cat folders.dat | awk '{ORS=" "}{print $1}' ;  echo " " ; rm folders.dat
+
+boxvar="false"
+if [ $2 = "-box" ]
+then
+boxvar="true"
+fi
+
+showvar="false"
+if [ $1 = "-show" ]
+then
+showvar="true"
+fi
+if [ $showvar = "true" ]
+then
+echo " "
+echo "Input values"
+echo "#Folder   Pressure[Pa]   Temperature[K]" ; echo " "
+grep -H "ExternalPressure" */simulation.input > tmp2
+grep -H "ExternalTemperature" */simulation.input > tmp3
+sed -i 's/\/simulation.input:ExternalPressure/\ /g' tmp2
+sed -i 's/\/simulation.input:ExternalTemperature/\ /g' tmp3
+paste tmp2 tmp3 | awk '{printf"%-15s%-15s%-15s\n", $1,$2,$4}'
+echo " "
+rm tmp2 tmp3
+exit 1
+fi
+
+inputfile=$1
+nfolder=$(wc -l $inputfile | awk '{print $1}')
+simtypefile=$(echo $inputfile | sed 's/\//\ /g' | awk '{print $NF}')
+if [ $simtypefile = "pressures.dat" ]
+then
+      simtype="Isotherm"
+elif [ $simtypefile = "temperatures.dat" ]
+then
+      simtype="Isobar"
+else
+echo " "
+echo "ERROR! wrong argument given. For help, write: \"zcreate-folders-RASPA.scp -h\" " 
+echo " " 
+exit 1
+fi
+
+
+inittemp=$(grep "ExternalTemperature" template/simulation.input | sed 's/\./\ /g'| awk '{print $2}')
+initpress=$(grep "ExternalPressure" template/simulation.input | awk '{print $2}')
+struc=$(grep "FrameworkName" template/simulation.input | awk '{print $2}')
+ux=$(grep "UnitCells" template/simulation.input | awk '{print $2}')
+uy=$(grep "UnitCells" template/simulation.input | awk '{print $3}')
+uz=$(grep "UnitCells" template/simulation.input | awk '{print $4}')
+
+if [ $boxvar = "true" ]
+then
+struc=Box ; ux=1 ; uy=1 ; uz=1
+fi
+
+#####
+#####
+# RestartFile check
+#####
+#####
+resfile=$(grep "RestartFile" template/simulation.input | grep -v "WriteBinary" | awk '{print $2}')
+rfcheckvar=$(ls -d template/*/ | grep "RestartInitial" | sed 's/\//\ /g' | awk '{print $2}')
+rfcheck="false"
+if [ -n "$rfcheckvar" ] ; then
+rfcheck="true"
+fi
+if [ $resfile = "yes" ] ; then
+if [ $rfcheck = "true" ] ; then
+echo " " ; echo "======================================="; echo " "
+echo "RestartFile requested and found"
+else 
+echo " "
+echo "ERROR! RestartFile option is set \"yes\" but RestartInitial is not found"
+echo " "
+exit 1
+fi
+else
+if [ $rfcheck = "true" ] ; then
+echo " "
+echo "===###===@@@===###==="
+echo "===###===@@@===###==="
+echo "WARNING! RestartFile option is set \"no\" but RestartInitial is found"
+echo "===###===@@@===###==="
+echo "===###===@@@===###==="
+else
+echo " " ; echo "======================================="; echo " "
+echo "RestartFile not requested and not found"
+fi
+fi
+#####
+#####
+
+
+
+echo " " ; echo "======================================="; echo " "
+echo "Initial Conditions:" 
+echo "#Simulation_Type   Structure   Initial_Pressure[Pa]   Initial_Temperature[K]"
+echo $simtype  "   "  $struc "   " $initpress "   " $inittemp
+
+echo " " ; echo "=======================================" 
+echo "#New_Folder   Pressure[Pa]   Temperature[K]" ; echo " "
+
+
+if [ $simtype = "Isotherm" ]
+then
+let num=$ndir+1
+
+while read line; do
+	mkdir $num
+        cp template/simulation.input $num/.
+        cp template/run $num/.
+        cp template/*.def $num/.
+        cp template/*.cif $num/.
+        npressure=$line
+        echo $num  "     " $npressure  "    "  $inittemp
+
+        cp $num/simulation.input $num/temporal1.tmp
+        awk -v newpressure=$npressure '{if ($1=="ExternalPressure"){print $1,newpressure} else print }' $num/temporal1.tmp > $num/simulation.input
+        rm $num/temporal1.tmp
+        if [ $resfile = "yes" ]
+        then
+        cp -r template/RestartInitial/ $num/.
+        mv $num/RestartInitial/System_0/restart_${struc}_${ux}.${uy}.${uz}_$inittemp.000000_$initpress  $num/RestartInitial/System_0/restart_${struc}_${ux}.${uy}.${uz}_$inittemp.000000_$npressure
+        fi
+        let num=$num+1
+done < $inputfile
+echo " "
+
+
+elif [ $simtype = "Isobar" ]
+then
+
+ncols=$(head -1 $inputfile | awk '{print NF}')
+
+while read line; do
+        ntemperature=$(echo $line | awk '{print $1}')
+        mkdir $ntemperature
+        cp template/simulation.input $ntemperature/.
+        cp template/run $ntemperature/.
+        cp template/*.def $ntemperature/.
+        cp template/*.cif $ntemperature/.
+        echo $ntemperature  "     " $initpress  "    "  $ntemperature
+        echo " "
+        cp $ntemperature/simulation.input $ntemperature/temporal1.tmp
+        awk -v newtemp=$ntemperature '{if ($1=="ExternalTemperature"){print $1,newtemp} else print }' $ntemperature/temporal1.tmp > $ntemperature/simulation.input
+        rm $ntemperature/temporal1.tmp
+        if [ $ncols = "2" ]
+        then
+        rosen=$(echo $line | awk '{print $2}')
+        cp $ntemperature/simulation.input $ntemperature/temporal1.tmp
+        awk -v newrosen=$rosen '{if ($1=="IdealGasRosenbluthWeight"){printf "%37s%34.23f\n", $1,newrosen} else print }' $ntemperature/temporal1.tmp > $ntemperature/simulation.input
+        rm $ntemperature/temporal1.tmp
+        fi
+        if [ $resfile = "yes" ]
+        then
+        cp -r template/RestartInitial/ $ntemperature/.
+        mv $ntemperature/RestartInitial/System_0/restart_${struc}_${ux}.${uy}.${uz}_$inittemp.000000_$initpress  $ntemperature/RestartInitial/System_0/restart_${struc}_${ux}.${uy}.${uz}_$ntemperature.000000_$initpress
+        fi 
+done < $inputfile
+echo " "
+
+fi
