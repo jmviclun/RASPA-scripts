@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Developed by J.M. Vicent-Luna
-# LAST UPDATED 16-12-18
+# LAST UPDATED 24-01-19
 
 if [ $# -eq "0" ]
 then
