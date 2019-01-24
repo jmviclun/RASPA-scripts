@@ -184,7 +184,7 @@ while read line; do
         cp template/simulation.input $ntemperature/.
         cp template/run $ntemperature/.
         cp template/*.def $ntemperature/.
-        if [ $boxvar = "false" ] ; then cp template/*.cif $num/. ; fi
+        if [ $boxvar = "false" ] ; then cp template/*.cif $ntemperature/. ; fi
         echo $ntemperature  "     " $initpress  "    "  $ntemperature
         echo " "
         cp $ntemperature/simulation.input $ntemperature/temporal1.tmp
