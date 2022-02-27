@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Developed by J.M. Vicent-Luna
-# LAST UPDATED 24-01-19
+# LAST UPDATED 27-02-22
 
 if [ $# -eq "0" ]
 then
@@ -45,9 +45,12 @@ echo "This directory contains these folders:" ; echo ""
 cat folders.dat | awk '{ORS=" "}{print $1}' ;  echo " " ; rm folders.dat
 
 boxvar="false"
+if [ $# -eq "2" ]
+then
 if [ $2 = "-box" ]
 then
 boxvar="true"
+fi
 fi
 
 showvar="false"
@@ -101,11 +104,24 @@ fi
 
 #####
 #####
+# BlockPockets check
+#####
+#####
+blockcheckvar=$(ls template/ | grep ".block")
+blockcheck="false"
+if [ -n "$blockcheckvar" ] ; then
+blockcheck="true"
+fi
+#####
+#####
+
+#####
+#####
 # RestartFile check
 #####
 #####
 resfile=$(grep "RestartFile" template/simulation.input | grep -v "WriteBinary" | awk '{print $2}')
-rfcheckvar=$(ls -d template/*/ | grep "RestartInitial" | sed 's/\//\ /g' | awk '{print $2}')
+rfcheckvar=$(ls -d template/* | grep "RestartInitial" | sed 's/\//\ /g' | awk '{print $2}')
 rfcheck="false"
 if [ -n "$rfcheckvar" ] ; then
 rfcheck="true"
@@ -156,6 +172,7 @@ while read line; do
         cp template/simulation.input $num/.
         cp template/run $num/.
         cp template/*.def $num/.
+	if [ $blockcheck = "true" ] ; then cp template/*.block $num/. ; fi
         if [ $boxvar = "false" ] ; then cp template/*.cif $num/. ; fi
         npressure=$line
         echo $num  "     " $npressure  "    "  $inittemp
@@ -184,6 +201,7 @@ while read line; do
         cp template/simulation.input $ntemperature/.
         cp template/run $ntemperature/.
         cp template/*.def $ntemperature/.
+	if [ $blockcheck = "true" ] ; then cp template/*.block $num/. ; fi
         if [ $boxvar = "false" ] ; then cp template/*.cif $ntemperature/. ; fi
         echo $ntemperature  "     " $initpress  "    "  $ntemperature
         echo " "
